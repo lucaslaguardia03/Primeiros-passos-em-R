@@ -1,0 +1,169 @@
+---
+title: "Primeiros Passos em R"
+author: "Lucas Laguardia"
+date: "2026-03-18"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    highlight: tango
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r pacotes, include = FALSE}
+
+#Instalação dos pacotes
+
+pacotes <- c( "readxl", "dplyr", "tidyr", "kableExtra",
+  "geobr", "ggplot2", "stringr", "ggrepel", "ggspatial", "sf", "scales")
+
+novos_pacotes <- pacotes[!pacotes %in% installed.packages()[, "Package"] ]
+
+if(length(novos_pacotes) > 0) {
+  install.packages(novos_pacotes)
+}
+
+lapply(pacotes, library, character.only = TRUE)
+
+#Contadores
+
+n_tabela <- 1
+
+```
+
+O objetivo desse exercício é apresentar municípios que possuem a indústria extrativa como destaque e traçar o perfil dos vínculos empregatícios da atividade econômica extrativa das Unidades da Federação selecionada, respondendo às seguintes perguntas (Utilize o ano de 2020 ou 2021 como referência):
+
+# Questão 1
+
+**Unidade de Federação:** Minas Gerais  
+**Ano:** 2021
+
+
+```{r bandeira, out.width="40%"}
+knitr::include_graphics("bandeiraes.png")
+```
+
+
+##Quais os municípios que apresentaram a indústria extrativa como a principal, a segunda ou a terceira mais importante atividade econômica?
+
+Os municípios `r reposta_questao1` apresentaram a indústria extrativa como a principal, a segunda ou a terceira mais importante atividade econômica no Espírito Santo em 2021, conforme demonstra a tabela abaixo:
+
+
+```{r questao_1.1, echo=FALSE}
+
+#Ler planilha excel
+
+dados_questao1 <- read_excel("Atividades - ES 2021.xlsx", skip = 1)
+
+colnames(dados_questao1)[1] <- "Município"
+
+#Ordenar atividades com mais vínculos
+
+atividades_ordenadas <- dados_questao1 %>% 
+  pivot_longer(cols = 2:21, names_to = "Atividade", values_to = "Vínculos") %>% 
+  group_by(Município) %>% 
+  arrange(desc(Vínculos), .by_group = TRUE) %>% 
+  slice_head(n = 3) %>% 
+  mutate(Posição = paste0(row_number(), "º")) %>% 
+  ungroup() %>% 
+  select(Município, Atividade, Posição) %>% 
+  pivot_wider(values_from = Atividade, names_from = Posição)
+  
+#Ordenar atividades com mais vínculos
+
+kable(atividades_ordenadas, 
+      col.names = c("Município", "1º", "2º", "3º"), caption = paste0(
+  "<center><span style='color:black; font-weight:bold;'>",
+  "Tabela ", n_tabela, " - Atividades econômicas com mais vínculos por município - Espírito Santo (2021)",
+  "</span></center>"),
+       align = "c") %>% 
+  
+ kable_styling(
+    full_width = FALSE,
+    position = "center",
+    font_size = 14,
+    bootstrap_options = c("striped", "hover", "condensed")
+  ) %>%
+  
+  footnote(
+    general = "Fonte: RAIS (2021) - Elaboração própria. Classificação conforme o número de vínculos formais de trabalho.",
+    general_title = "",
+    footnote_as_chunk = TRUE)
+
+# Resultado
+
+resposta_questao1 <- atividades_ordenadas %>% 
+  filter( `1º` == "Indústrias Extrativas" |
+    `2º` == "Indústrias Extrativas" |
+    `3º` == "Indústrias Extrativas") %>% 
+  pull(Município) %>% 
+  paste(collapse = ", ")
+```
+
+# Represente a resposta anterior em um mapa.
+
+```{r mapa_questao1, echo=FALSE}
+
+# Carregar o mapa do Espírito Santo
+mapa_es <- read_municipality(code_muni = "ES", year = 2020)
+
+# Municípios a destacar
+municipios_mapa <- c("Água Doce Do Norte", "Anchieta", "Vila Pavão")
+
+# Cores para cada município
+cores <- c(
+  "Água Doce Do Norte" = "red",
+  "Anchieta"           = "blue",
+  "Vila Pavão"         = "green"
+)
+
+# Criar coluna de cor
+mapa_es <- mapa_es %>%
+  mutate(cor = ifelse(name_muni %in% municipios_mapa, name_muni, "Outros"))
+
+ggplot(mapa_es) +
+  geom_sf(aes(fill = cor), color = "white", linewidth = 0.2) +
+  geom_label(
+    data = centroides,
+    aes(x = lon, y = lat, label = name_muni),
+    size          = 3,
+    fontface      = "bold",
+    fill          = "white",
+    color         = "black",
+    label.size    = 0.3,
+    label.padding = unit(0.15, "lines"),
+    nudge_x       = 0.6
+  ) +
+  geom_segment(
+    data = centroides,
+    aes(x = lon, xend = lon + 0.55, y = lat, yend = lat),
+    color     = "gray40",
+    linewidth = 0.3
+  ) +
+  scale_fill_manual(
+    values = c(cores, "Outros" = "gray90"),
+    name   = "Municípios",
+    breaks = c("Água Doce Do Norte", "Anchieta", "Vila Pavão", "Outros")
+  ) +
+  labs(
+    title   = paste0("Mapa ", mapa_counter, " - Municípios capixabas com indústria extrativa entre as três principais atividades econômicas em 2021"),
+    caption = "Fonte: RAIS (2021) e IBGE (2020) - Elaboração própria."
+  ) +
+  theme_void() +
+  theme(
+    plot.title    = element_text(hjust = 0.5, face = "bold", size = 12,
+                                 margin = margin(b = 10)),
+    plot.caption  = element_text(hjust = 0.5, size = 9, color = "gray40",
+                                 margin = margin(t = 10)),
+    legend.position  = "bottom",
+    legend.title     = element_text(face = "bold", size = 10),
+    legend.text      = element_text(size = 9),
+    plot.background  = element_rect(fill = "white", color = NA),
+    plot.margin      = margin(20, 20, 20, 20)
+  )

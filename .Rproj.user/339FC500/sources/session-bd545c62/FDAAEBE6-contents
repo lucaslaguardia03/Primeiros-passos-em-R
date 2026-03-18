@@ -1,0 +1,810 @@
+---
+title: "Exercício Prático 2 - Métodos Quantitativos Aplicados à Gestão Pública"
+author: "Lucas Resende Laguardia - 45 CSAP"
+date: "18/03/2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    highlight: tango
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+```{r pacotes, include=FALSE}
+# Instalação e carregamento de pacotes
+required_packages <- c(
+  "readxl", "dplyr", "tidyr", "kableExtra",
+  "geobr", "ggplot2", "stringr", "ggrepel", "ggspatial", "sf", "scales"
+)
+
+new_packages <- required_packages[!(required_packages %in% 
+                                      installed.packages()[, "Package"])]
+if(length(new_packages)) install.packages(new_packages)
+
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+library(geobr)
+library(ggplot2)
+library(stringr)
+library(ggrepel)
+library(ggspatial)
+library(sf)
+library(scales)
+
+# Inicializa contadores
+tabela_counter <- 1
+mapa_counter <- 1
+grafico_counter <- 1
+```
+
+# Questão 1
+
+**Unidade de Federação:** Espírito Santo  
+**Ano:** 2021
+
+```{r bandeira, out.width="30%"}
+knitr::include_graphics("bandeiraes.png")
+```
+
+## Quais os municípios que apresentaram a indústria extrativa como a principal, a segunda ou a terceira mais importante atividade econômica?
+
+Os municípios Água Doce do Norte, Anchieta e Vila Pavão apresentaram a indústria extrativa como a principal, a segunda ou a terceira mais importante atividade econômica no Espírito Santo em 2021, conforme demonstra a tabela abaixo:
+
+```{r tabela_top3}
+# ------------------------------
+# Leitura da planilha
+# ------------------------------
+dados <- read_excel(
+  path = "1a.xlsx",
+  skip = 1
+)
+
+colnames(dados)[1] <- "Município"
+
+# ------------------------------
+# Converte TODAS as colunas B:T para numéricas
+# remove vírgulas, pontos e espaços antes
+# ------------------------------
+dados[, 2:21] <- dados[, 2:21] |> 
+  mutate(across(
+    everything(),
+    ~ as.numeric(gsub(",", ".", gsub("[^0-9,]", "", as.character(.))))
+  ))
+
+# ------------------------------
+# Identificação das top 3 atividades
+# ------------------------------
+resultados <- dados %>%
+  pivot_longer(
+    cols = 2:21,
+    names_to = "Atividade",
+    values_to = "Vinculos"
+  ) %>%
+  group_by(Município) %>%
+  arrange(desc(Vinculos), .by_group = TRUE) %>%
+  slice_head(n = 3) %>%
+  mutate(Posicao = paste0(row_number(), "º")) %>%
+  ungroup() %>%
+  select(Município, Posicao, Atividade) %>%
+  pivot_wider(
+    names_from = Posicao,
+    values_from = Atividade
+  )
+
+# ------------------------------
+# Vírgula como separador decimal
+# ------------------------------
+options(OutDec = ",")
+
+# ------------------------------
+# Tabela formatada (todos os municípios)
+# ------------------------------
+kable(
+  resultados,
+  format = "html",
+  col.names = c("Município", "1º", "2º", "3º"),
+  caption = paste0("<div style='text-align:center; color:black; font-weight:bold; font-size:16px;'>Tabela ", tabela_counter, " - Atividades econômicas com mais vínculos por município - Espírito Santo (2021)</div>"),
+  align = "lccc",
+  escape = FALSE
+) %>%
+  kable_styling(
+    full_width = FALSE,
+    position = "center",
+    font_size = 14,
+    bootstrap_options = c("striped", "hover", "condensed")
+  ) %>%
+  footnote(
+    general = "Fonte: RAIS (2021) - Elaboração própria. Classificação conforme o número de vínculos formais de trabalho.",
+    general_title = "",
+    footnote_as_chunk = TRUE
+  )
+
+# Incrementa contador
+tabela_counter <<- tabela_counter + 1
+
+# ------------------------------
+# Lista dos municípios com Indústrias Extrativas no top 3
+# ------------------------------
+lista_unificada <- resultados %>%
+  filter(
+    `1º` == "Indústrias Extrativas" |
+    `2º` == "Indústrias Extrativas" |
+    `3º` == "Indústrias Extrativas"
+  ) %>%
+  pull(Município) %>%
+  paste(collapse = ", ")
+```
+
+**Municípios identificados:** `r lista_unificada`
+
+## Represente a resposta anterior em um mapa.
+
+```{r mapa_municipios}
+# Função para normalizar nomes
+normalize_name <- function(x) {
+  x <- tolower(x)
+  x <- iconv(x, from = "UTF-8", to = "ASCII//TRANSLIT")
+  return(trimws(x))
+}
+
+# Divida a string em vetores individuais e normalize
+nomes_brutos <- trimws(strsplit(lista_unificada, ",")[[1]])
+nomes_normalizados <- sapply(nomes_brutos, normalize_name)
+
+# Baixe os dados geográficos dos municípios do Espírito Santo
+mun_es <- read_municipality(code_muni = "ES", year = 2020)
+
+# Normalize os nomes no dataset
+mun_es$nome_normalizado <- sapply(mun_es$name_muni, normalize_name)
+
+# Filtre os municípios a serem destacados
+mun_destaque <- mun_es %>%
+  filter(nome_normalizado %in% nomes_normalizados) %>%
+  mutate(
+    cor = case_when(
+      name_muni == "Água Doce do Norte" ~ "purple",
+      name_muni == "Anchieta" ~ "blue",
+      name_muni == "Vila Pavão" ~ "green",
+      TRUE ~ "red"
+    ),
+    ordem = case_when(
+      name_muni == "Água Doce do Norte" ~ 1,
+      name_muni == "Anchieta" ~ 2,
+      name_muni == "Vila Pavão" ~ 3,
+      TRUE ~ 0
+    )
+  ) %>%
+  arrange(ordem)
+
+# Calcule os centróides para posicionar os labels
+mun_destaque_centroids <- st_centroid(mun_destaque) %>%
+  mutate(
+    x = st_coordinates(.)[,1],
+    y = st_coordinates(.)[,2]
+  )
+
+# Crie o mapa com título personalizado
+mapa_es <- ggplot(data = mun_es) +
+  geom_sf(fill = "lightgray", color = "white", size = 0.7) +
+  geom_sf(data = mun_destaque, aes(fill = name_muni), color = "black", size = 0.5, alpha = 0.7) +
+  scale_fill_manual(
+    values = setNames(mun_destaque$cor, mun_destaque$name_muni),
+    name = "Municípios Destacados"
+  ) +
+  geom_text_repel(
+    data = mun_destaque_centroids,
+    aes(x = x, y = y, label = name_muni),
+    size = 3,
+    color = "black",
+    fontface = "bold",
+    box.padding = 0.5,
+    point.padding = 0.5,
+    max.overlaps = Inf
+  ) +
+  theme_void() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, size = 9, face = "bold", color = "black", margin = margin(b = 10)),
+    plot.caption = element_text(hjust = 0.5, size = 8, color = "black", margin = margin(t = 5)),
+    plot.margin = unit(c(0.5, 0.001, 0.001, 0.001), "cm")
+  ) +
+  labs(
+    title = paste0("Mapa ", mapa_counter, " - Municípios capixabas com indústria extrativa entre as três principais atividades econômicas em 2021"),
+    caption = "Fonte: RAIS (2021) e IBGE (2020) - Elaboração própria."
+  ) +
+  coord_sf(crs = 4674, datum = NA, expand = TRUE) +
+  annotation_scale(location = "br", width_hint = 0.15, height = unit(0.15, "cm"), 
+                   line_width = 0.5, text_cex = 0.8) +
+  annotation_north_arrow(location = "tr", which_north = "true", 
+                         style = north_arrow_fancy_orienteering, width = unit(1.2, "cm"))
+
+print(mapa_es)
+
+# Incrementa contador
+mapa_counter <<- mapa_counter + 1
+```
+
+## Qual o total de vínculos formais dessa atividade econômica na UF estudada?
+
+```{r total_vinculos}
+# Verifique se a coluna "Indústrias Extrativas" existe
+col_extrativa <- "Indústrias Extrativas"
+
+if(!col_extrativa %in% names(dados)) {
+  stop("Coluna 'Indústrias Extrativas' não encontrada")
+}
+
+# Some todos os vínculos da indústria extrativa no ES
+soma_extrativa <- sum(dados[[col_extrativa]], na.rm = TRUE)
+
+# Formate com vírgula como separador decimal e ponto como separador de milhar
+soma_extrativa_formatada <- format(soma_extrativa, decimal.mark = ",", big.mark = ".", nsmall = 0)
+```
+
+O total de vínculos formais da atividade de **indústria extrativa** no Espírito Santo em 2021 foi de **`r soma_extrativa_formatada`** vínculos.
+
+## Apresente um ranking dos municípios com indústria extrativa dessa UF. Todos os municípios apontados em (1) e (2) aparecem no ranking?
+
+```{r ranking_tabela}
+# Criar ranking completo
+tabela_ranking <- dados %>%
+  select(Município, Vínculos = `Indústrias Extrativas`) %>%
+  filter(!is.na(Vínculos) & Vínculos > 0) %>%
+  arrange(desc(Vínculos)) %>%
+  mutate(Posição = row_number()) %>%
+  select(Posição, Município, Vínculos)
+
+# Formatar valores numéricos
+tabela_ranking_formatada <- tabela_ranking %>%
+  mutate(Vínculos = format(Vínculos, decimal.mark = ",", big.mark = ".", nsmall = 0))
+
+# Criar tabela com kable
+kable(
+  tabela_ranking_formatada,
+  format = "html",
+  caption = paste0("<div style='text-align:center; color:black; font-weight:bold; font-size:16px;'>Tabela ", tabela_counter, " - Ranking dos municípios do Espírito Santo por número de vínculos na Indústria Extrativa (2021)</div>"),
+  align = "ccc",
+  escape = FALSE
+) %>%
+  kable_styling(
+    full_width = FALSE,
+    position = "center",
+    font_size = 14,
+    bootstrap_options = c("striped", "hover", "condensed")
+  ) %>%
+  footnote(
+    general = "Fonte: RAIS (2021) - Elaboração própria. Os valores representam o número de vínculos formais de trabalho na atividade de indústria extrativa.",
+    general_title = "",
+    footnote_as_chunk = TRUE
+  ) %>%
+  row_spec(0, bold = TRUE, align = "c") %>%
+  column_spec(1, bold = TRUE)
+
+# Incrementa contador
+tabela_counter <<- tabela_counter + 1
+
+# Verificar se os municípios de (1) e (2) aparecem no ranking
+municipios_questao1 <- c("Agua Doce do Norte", "Anchieta", "Vila Pavao")
+municipios_no_ranking <- tabela_ranking %>%
+  pull(Município)
+
+todos_presentes <- all(municipios_questao1 %in% municipios_no_ranking)
+```
+
+**Análise:** `r if(todos_presentes) "Todos os municípios identificados nas questões anteriores (Água Doce do Norte, Anchieta e Vila Pavão) aparecem no ranking de municípios com indústria extrativa, conforme os destaques em amarelo no gráfico a seguir." else "Nem todos os municípios identificados aparecem no ranking."`
+
+```{r grafico_top20}
+# Criar ranking Top 20
+top20 <- dados %>%
+  select(Municipio = Município, Industria_Extrativa = `Indústrias Extrativas`) %>%
+  filter(!is.na(Industria_Extrativa) & Industria_Extrativa > 0) %>%
+  arrange(desc(Industria_Extrativa)) %>%
+  slice(1:20) %>%
+  mutate(
+    Municipio = factor(Municipio, levels = rev(Municipio)),
+    label = format(Industria_Extrativa, big.mark = ".", decimal.mark = ",", nsmall = 0),
+    cor_barra = ifelse(
+      Municipio %in% c("Vila Pavao", "Anchieta", "Agua Doce do Norte"),
+      "#FFD700",
+      "#1F78B4"
+    )
+  )
+
+# Gráfico Top 20
+grafico <- ggplot(top20, aes(x = Municipio, y = Industria_Extrativa)) +
+  geom_col(aes(fill = cor_barra), color = "black", width = 0.7) +
+  scale_fill_identity() +
+  geom_text(
+    aes(label = label),
+    hjust = -0.1,
+    size = 3.5
+  ) +
+  coord_flip(clip = "off") +
+  scale_y_continuous(
+    labels = function(x) format(x, big.mark = ".", decimal.mark = ",", nsmall = 0),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  labs(
+    title = paste0("Gráfico ", grafico_counter, " - Top 20 Municípios com maior número de vínculos na Indústria Extrativa"),
+    subtitle = "Espírito Santo - 2021",
+    x = "Município",
+    y = "Número de Vínculos",
+    caption = "Fonte: RAIS (2021) - Elaboração própria. Municípios destacados em amarelo foram identificados nas questões anteriores."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 9, color = "black"),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    plot.caption = element_text(hjust = 0.5, size = 8),
+    plot.margin = margin(10, 40, 10, 10),
+    panel.grid.major.y = element_blank(),
+    axis.text.y = element_text(size = 10)
+  )
+
+print(grafico)
+
+# Incrementa contador
+grafico_counter <<- grafico_counter + 1
+```
+
+## Caracterize o perfil dos vínculos desse setor para a UF, conforme (a) sexo; (b) idade e (c) escolaridade.
+
+### (a) Perfil por Sexo
+
+Segundo os dados da RAIS (2021), a distribuição dos vínculos trabalhistas na atividade econômica de Indústria Extrativa no Espírito Santo revela uma forte desigualdade de gênero. Nesse setor, 88,4% dos trabalhadores eram homens, enquanto apenas 11,6% eram mulheres.
+
+Esse cenário indica que a participação feminina permanece bastante limitada, refletindo tanto características históricas do setor — tradicionalmente associado a atividades de maior esforço físico e à presença masculina — quanto barreiras contemporâneas, como menor acesso das mulheres a determinadas formações técnicas, discriminação estrutural e ambientes de trabalho pouco adaptados para diversidade de gênero.
+
+```{r perfil_sexo, fig.width=8, fig.height=6}
+# Ler a planilha "sexo.xlsx"
+sexo <- read_excel("sexo.xlsx", skip = 1)
+
+# Extrair valores da linha 79 (ES total)
+homens <- as.numeric(sexo[[3]][79]) / as.numeric(sexo[[7]][79])
+mulheres <- as.numeric(sexo[[4]][79]) / as.numeric(sexo[[7]][79])
+
+# Criar dataframe
+df_pizza <- data.frame(
+  Sexo = c("Homens", "Mulheres"),
+  Proporcao = c(homens, mulheres),
+  Cor = c("#1F78B4", "pink")
+)
+
+# Rótulos em formato percentual
+df_pizza$rotulo <- percent(df_pizza$Proporcao, accuracy = 0.1, decimal.mark = ",")
+
+# Gráfico de pizza
+ggplot(df_pizza, aes(x = "", y = Proporcao, fill = Sexo)) +
+  geom_col(color = "white", width = 1) +
+  geom_label(aes(label = rotulo),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE,
+             size = 5) +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = df_pizza$Cor) +
+  labs(
+    title = paste0("Gráfico ", grafico_counter, " - Proporção de Homens e Mulheres na Indústria Extrativa"),
+    subtitle = "Espírito Santo - 2021",
+    fill = "Sexo",
+    caption = "Fonte: RAIS (2021) - Elaboração própria."
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 9),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    plot.caption = element_text(hjust = 0.5, size = 8),
+    legend.position = "bottom"
+  )
+
+# Incrementa contador
+grafico_counter <<- grafico_counter + 1
+```
+
+### (b) Perfil por Idade
+
+A análise da distribuição etária dos trabalhadores da Indústria Extrativa no Espírito Santo, segundo dados da RAIS 2021, mostra que o setor é fortemente composto por profissionais de meia-idade. Apenas 4,1% dos vínculos pertencem a jovens entre 18 e 24 anos, enquanto 10,3% estão na faixa de 25 a 29 anos, indicando uma participação relativamente baixa de pessoas no início da vida laboral.
+
+O maior contingente encontra-se entre 30 e 49 anos, que somam mais de 65% do total de trabalhadores. A faixa de 30 a 39 anos representa 25,8% dos vínculos, seguida pela de 40 a 49 anos, com 39,2% — o grupo mais numeroso. Isso sugere que o setor demanda experiência acumulada, estabilidade profissional e, possivelmente, qualificações técnicas específicas, características mais comuns entre trabalhadores de idade intermediária.
+
+Já a participação de pessoas com 50 a 64 anos corresponde a 19,6%, mostrando que uma parcela significativa permanece ativa no setor mesmo em fases mais avançadas da carreira. Por outro lado, apenas 1% dos vínculos é formado por trabalhadores com 65 anos ou mais, o que reflete tanto a proximidade da aposentadoria quanto as exigências físicas e operacionais das atividades minerárias e extrativas.
+
+Em conjunto, os dados revelam um setor altamente concentrado em trabalhadores entre 30 e 49 anos, com baixa presença de jovens e idosos, o que reforça a importância de políticas de formação profissional e renovação da força de trabalho.
+
+
+```{r perfil_idade, fig.width=10, fig.height=6}
+# Ler a planilha "idade"
+idade <- read_excel("idade.xlsx", skip = 1)
+
+# Selecionar faixas etárias e calcular proporções
+faixas <- idade[1, 2:9] |> unlist() |> as.numeric()
+total  <- idade[[1, 10]]
+
+proporcao <- faixas / total
+
+df_idade <- data.frame(
+  Faixa = factor(
+    c("10 a 14", "15 a 17", "18 a 24", "25 a 29", 
+      "30 a 39", "40 a 49", "50 a 64", "65 ou mais"),
+    levels = c("10 a 14", "15 a 17", "18 a 24", "25 a 29", 
+               "30 a 39", "40 a 49", "50 a 64", "65 ou mais")
+  ),
+  Proporcao = proporcao
+)
+
+# Gráfico
+ggplot(df_idade, aes(x = Faixa, y = Proporcao)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = percent(Proporcao, accuracy = 0.1, decimal.mark = ",")),
+            vjust = -0.4, size = 3.5) +
+  scale_y_continuous(labels = function(x) percent(x, accuracy = 0.1, decimal.mark = ","),
+                     expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = paste0("Gráfico ", grafico_counter, " - Proporção de Vínculos por Faixa Etária na Indústria Extrativa"),
+    subtitle = "Espírito Santo - 2021",
+    x = "Faixa etária",
+    y = "Proporção dos vínculos",
+    caption = "Fonte: RAIS (2021) - Elaboração própria."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 9),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    plot.caption = element_text(hjust = 0.5, size = 8),
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
+  )
+
+# Incrementa contador
+grafico_counter <<- grafico_counter + 1
+```
+
+### (c) Perfil por Escolaridade
+
+A distribuição dos vínculos trabalhistas da Indústria Extrativa no Espírito Santo em 2021, segundo dados da RAIS, evidencia que o setor é composto majoritariamente por trabalhadores com nível médio completo. Essa categoria representa 45,6% de todos os vínculos, mostrando que o ensino médio é o principal requisito educacional para inserção nessa atividade econômica.
+
+Em seguida, destaca-se a participação de trabalhadores com ensino superior completo, que somam 24,0% do total. Esse dado indica a presença relevante de profissionais qualificados, provavelmente associados a funções técnicas, administrativas, de engenharia e de gestão, que dão suporte às operações do setor extrativo.
+
+Entre os níveis de escolaridade mais baixos, observa-se que 8,3% têm fundamental completo, 6,2% possuem 6ª a 9ª série do ensino fundamental, e 5,9% possuem ensino médio incompleto. Já as categorias de escolaridade mais reduzidas — até 5ª série incompleta (2,9%) e 5ª série completa (2,8%) — somam proporções relativamente pequenas, evidenciando uma menor presença de trabalhadores com baixa formação escolar.
+
+A participação de profissionais com pós-graduação é mais limitada: 2,0% possuem mestrado, enquanto 0,3% têm doutorado. Ainda, apenas 1,8% dos vínculos correspondem a trabalhadores com superior incompleto, e 0,4% são pessoas analfabetas.
+
+No conjunto, o perfil educacional da indústria extrativa capixaba demonstra que o setor é fortemente concentrado em trabalhadores com escolaridade intermediária (médio completo), ao mesmo tempo em que conta com um contingente relevante de profissionais altamente qualificados (superior completo), necessários para atividades técnicas e de gestão. As participações reduzidas de trabalhadores com baixa escolaridade reforçam a crescente profissionalização do setor e sua dependência de competências técnicas básicas e avançadas.
+
+```{r perfil_escolaridade, fig.width=10, fig.height=8}
+# Ler a planilha "escolaridade"
+df_esc <- read_excel("escolaridade.xlsx", skip = 1)
+
+# Selecionar linha 79
+linha79 <- df_esc[79, ]
+
+# Selecionar colunas de escolaridade (2 a 13)
+esc <- linha79[, 2:13]
+
+# Converter para numérico
+esc <- esc |> mutate(across(everything(), ~ as.numeric(.)))
+
+# Calcular proporções
+total <- esc[[12]]  # Total
+
+dados_esc <- esc |>
+  select(-Total) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "Escolaridade",
+    values_to = "Vinculos"
+  ) |>
+  mutate(
+    Proporcao = Vinculos / total
+  )
+
+# Formatar rótulos
+dados_esc$rotulo <- percent(dados_esc$Proporcao, accuracy = 0.1, decimal.mark = ",")
+
+# Gráfico
+ggplot(dados_esc, aes(x = reorder(Escolaridade, Proporcao), y = Proporcao, fill = Escolaridade)) +
+  geom_col() +
+  geom_text(aes(label = rotulo), hjust = -0.1, size = 3.5) +
+  coord_flip(clip = "off") +
+  labs(
+    title = paste0("Gráfico ", grafico_counter, " - Proporção de Vínculos por Escolaridade na Indústria Extrativa"),
+    subtitle = "Espírito Santo - 2021",
+    x = "Escolaridade",
+    y = "Proporção do total de vínculos",
+    caption = "Fonte: RAIS (2021) - Elaboração própria."
+  ) +
+  scale_y_continuous(labels = label_percent(decimal.mark = ","),
+                     expand = expansion(mult = c(0, 0.15))) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 9),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    plot.caption = element_text(hjust = 0.5, size = 8),
+    panel.grid.major.y = element_blank()
+  )
+
+# Incrementa contador
+grafico_counter <<- grafico_counter + 1
+```
+
+# Questão 2
+
+## Desenvolvimento Teórico
+
+O Índice de Pressão Demográfica por Estrutura Etária e Sexo (IPDES) tem como objetivo sintetizar, em uma única métrica, a estrutura demográfica de um território a partir da distribuição etária e das diferenças entre homens e mulheres. O índice se fundamenta na literatura de transição demográfica, razão de dependência e estrutura etária funcional, permitindo avaliar o grau de pressão sobre políticas públicas, mercado de trabalho e sistemas de proteção social.
+
+## Dimensões
+
+- Dimensão Jovem (0–14 anos)  
+- Dimensão Adulta (15–64 anos)  
+- Dimensão Idosa (65 anos ou mais)
+
+Essas dimensões seguem o padrão internacional adotado por ONU, OCDE e IBGE.
+
+---
+
+##Seleção de Variáveis
+
+Para cada estado e ano, utilizam-se:
+
+- Percentual de homens por faixa etária  
+- Percentual de mulheres por faixa etária  
+
+As faixas etárias são posteriormente agregadas para formar as três dimensões: jovem, adulta e idosa.
+
+---
+
+##Normalização
+
+As variáveis são normalizadas pelo método *min-max*, convertendo-as para a escala \([0, 1]\).
+
+A fórmula utilizada é:
+
+$$
+X'_{i} = \frac{X_{i} - \min(X)}{\max(X) - \min(X)}
+$$
+
+onde:  
+- \(X_i\): valor bruto da variável  
+- \(X'_i\): valor normalizado  
+- \(\min(X)\) e \(\max(X)\): valores mínimo e máximo observados no conjunto de estados
+
+---
+
+## Atribuição de Pesos
+
+Foram adotados **pesos iguais** entre as três dimensões:
+
+$$
+w = \frac{1}{3}
+$$
+
+---
+
+## Agregação
+
+O IPDES é agregado por soma ponderada das dimensões normalizadas:
+
+$$
+IPDES_i = w \cdot J'_i + w \cdot A'_i + w \cdot I'_i
+$$
+
+Como \( w = \frac{1}{3} \), o índice pode ser reescrito como:
+
+$$
+IPDES_i = \frac{J'_i + A'_i + I'_i}{3}
+$$
+
+onde:  
+- \(J'_i\): dimensão jovem normalizada  
+- \(A'_i\): dimensão adulta normalizada  
+- \(I'_i\): dimensão idosa normalizada  
+
+---
+
+## Análise dos Resultados
+
+Os valores do IPDES variam entre 0 e 1, sendo:
+
+- **Próximo de 1** → menor pressão demográfica, maior equilíbrio estrutural  
+- **Próximo de 0** → maior pressão demográfica, desequilíbrio estrutural  
+
+Estados com valores mais altos apresentam:  
+- maior proporção de população em idade ativa  
+- menor sobrecarga de dependência jovem ou idosa  
+- maior sustentabilidade demográfica
+
+Estados com valores menores apresentam:  
+- forte pressão por juventude  
+- ou envelhecimento acelerado  
+- maior demanda em políticas de saúde, educação e previdência
+
+A comparação temporal permite identificar tendências de envelhecimento, rejuvenescimento ou estabilização da estrutura etária.
+
+
+Nesse sentido, a Tabela 3 descreve os resultados do indicador, nos anos de 2009 e 2015, para os 10 estados mais populosos do Brasil atualmente.
+
+```{r tabela_questao2}
+#2
+###############################################################
+# Ler a planilha (pular 3 linhas)
+###############################################################
+dados <- read_excel("tabela261 (1).xlsx",
+                    skip = 3,
+                    col_names = FALSE)
+
+# Renomear colunas – agora com "Estado"
+colnames(dados) <- c("Estado", "faixa_etaria",
+                     "homens_2009", "mulheres_2009",
+                     "homens_2015", "mulheres_2015")
+
+###############################################################
+# Converter colunas numéricas (vírgula → ponto)
+###############################################################
+cols_num <- c("homens_2009", "mulheres_2009",
+              "homens_2015", "mulheres_2015")
+
+dados[cols_num] <- lapply(dados[cols_num], function(x){
+  x <- as.character(x)
+  x <- str_replace_all(x, ",", ".")
+  x <- str_replace_all(x, "%", "")
+  x <- str_trim(x)
+  as.numeric(x)
+})
+
+###############################################################
+# Seleção dos estados solicitados
+###############################################################
+ufs_selecionadas <- c("São Paulo", "Minas Gerais", "Rio de Janeiro",
+                      "Bahia", "Paraná", "Rio Grande do Sul",
+                      "Pernambuco", "Ceará", "Pará", "Santa Catarina")
+
+dados_filtro <- dados %>%
+  filter(Estado %in% ufs_selecionadas)
+
+###############################################################
+# Classificação das faixas etárias
+###############################################################
+dados_filtro <- dados_filtro %>%
+  mutate(grupo = case_when(
+    faixa_etaria %in% c("0 a 4 anos", "5 a 9 anos", "10 a 14 anos") ~ "jovem",
+    faixa_etaria %in% c("15 a 19 anos", "20 a 24 anos", "25 a 29 anos",
+                        "30 a 34 anos", "35 a 39 anos", "40 a 44 anos",
+                        "45 a 49 anos", "50 a 54 anos", "55 a 59 anos",
+                        "60 a 64 anos") ~ "adulto",
+    faixa_etaria %in% c("65 a 69 anos", "70 anos ou mais") ~ "idoso",
+    TRUE ~ NA_character_
+  ))
+
+###############################################################
+# Cálculo do IPDES
+###############################################################
+ipdes <- dados_filtro %>%
+  group_by(Estado) %>%
+  summarise(
+    jovem_2009 = sum(homens_2009[grupo=="jovem"], na.rm=TRUE) +
+      sum(mulheres_2009[grupo=="jovem"], na.rm=TRUE),
+    
+    adulto_2009 = sum(homens_2009[grupo=="adulto"], na.rm=TRUE) +
+      sum(mulheres_2009[grupo=="adulto"], na.rm=TRUE),
+    
+    idoso_2009 = sum(homens_2009[grupo=="idoso"], na.rm=TRUE) +
+      sum(mulheres_2009[grupo=="idoso"], na.rm=TRUE),
+    
+    jovem_2015 = sum(homens_2015[grupo=="jovem"], na.rm=TRUE) +
+      sum(mulheres_2015[grupo=="jovem"], na.rm=TRUE),
+    
+    adulto_2015 = sum(homens_2015[grupo=="adulto"], na.rm=TRUE) +
+      sum(mulheres_2015[grupo=="adulto"], na.rm=TRUE),
+    
+    idoso_2015 = sum(homens_2015[grupo=="idoso"], na.rm=TRUE) +
+      sum(mulheres_2015[grupo=="idoso"], na.rm=TRUE)
+  ) %>%
+  mutate(
+    IPDES_2009 = (jovem_2009 + idoso_2009) / adulto_2009,
+    IPDES_2015 = (jovem_2015 + idoso_2015) / adulto_2015
+  ) %>%
+  mutate(across(c(IPDES_2009, IPDES_2015),
+                ~ format(.x, decimal.mark = ",",
+                         big.mark = ".", digits = 4, nsmall = 4)))
+
+###############################################################
+# Tabela final com legenda usando footnote()
+###############################################################
+ipdes %>%
+  select(Estado, IPDES_2009, IPDES_2015) %>%
+  kable(caption = "Tabela 3 - Índice de Pressão Demográfica por Estrutura Etária e Sexo (IPDES) — 2009 e 2015",
+        align = "lcc") %>%
+  kable_classic(full_width = FALSE) %>%
+  footnote(
+    general = "Fonte: IBGE, PNAD - Pesquisa Nacional por Amostra de Domicílios (2009 e 2015). Elaboração própria.",
+    general_title = "",
+    footnote_as_chunk = TRUE
+  )
+```
+
+Os dados do IPDES mostram um quadro consistente de redução da pressão demográfica na maior parte dos estados entre 2009 e 2015. Entre os dez estados analisados, nove registraram queda do indicador, sugerindo um avanço geral no processo de transição demográfica. Apenas Santa Catarina apresentou um leve aumento, praticamente estável.
+
+**1. Estados com maior redução da pressão demográfica**
+
+O grupo que mais se destaca inclui Pará, Ceará, Pernambuco e Bahia.
+Esses estados exibiram quedas expressivas no IPDES, especialmente o Pará, cuja redução foi a maior do conjunto. Essa tendência pode indicar:
+
+Aceleração da transição demográfica, com redução mais rápida da fecundidade.
+
+Aumento relativo da população em idade ativa, reduzindo a razão de dependência.
+
+Impacto de fluxos migratórios, que podem ter reforçado a base de adultos nesses estados.
+
+No caso do Nordeste (Ceará, Pernambuco, Bahia), é provável que a redução da fecundidade, combinada com melhorias socioeconômicas e aumento da escolaridade feminina, tenha contribuído para essa queda mais acentuada do IPDES.
+
+**2. Reduções moderadas: Sudeste e Sul**
+
+Estados como Minas Gerais, São Paulo, Paraná, Rio Grande do Sul e Rio de Janeiro apresentaram quedas menores e mais graduais.
+
+Esse padrão sugere que:
+
+Esses estados já estavam em estágios mais avançados da transição demográfica em 2009.
+
+A proporção de crianças e jovens já era menor, e o processo de envelhecimento estava mais consolidado.
+
+Mudanças demográficas tendem a ocorrer de forma mais lenta em regiões com estruturas etárias maduras.
+
+Entre eles, São Paulo e Rio de Janeiro se destacam por uma variação muito discreta, o que indica estabilidade na composição etária.
+
+**3. Estado com estabilidade ou leve aumento**
+
+Santa Catarina foi o único estado que apresentou um pequeno aumento no IPDES, embora quase imperceptível.
+Isso não sugere uma mudança significativa no padrão demográfico, podendo refletir:
+
+Pequenas oscilações na estrutura etária local;
+
+Crescimento ligeiro da população idosa;
+
+Possíveis movimentos migratórios recentes.
+
+Ainda assim, o estado permanece como aquele com menor pressão demográfica entre os analisados.
+
+**4. Comparação geral e leitura final**
+
+O panorama geral revela que todos os estados mais populosos, com exceção de Santa Catarina, passaram por uma redução da carga demográfica entre 2009 e 2015. Isso implica que:
+
+Houve diminuição relativa da população dependente (crianças e idosos);
+
+A população em idade produtiva ganhou peso no conjunto;
+
+A janela demográfica se ampliou em alguns estados, especialmente no Norte e Nordeste.
+
+Ao mesmo tempo, estados do Sul e Sudeste tendem a se aproximar de um cenário de maior envelhecimento no longo prazo, dada a estabilidade e a já baixa fecundidade.
+
+**5. Interpretação estratégica**
+
+Norte e Nordeste: melhorias rápidas podem abrir espaço para políticas de emprego, educação profissional e dinamização econômica.
+
+Sudeste e Sul: estabilidade indica um estágio avançado da transição demográfica, com a necessidade crescente de políticas voltadas para envelhecimento populacional.
+
+Santa Catarina: exige monitoramento, pois o leve aumento pode sinalizar início de mudança estrutural — ou apenas variação conjuntural.
+
+
+# Referências Bibliográficas
+OECD. 2008. Handbook on Constructing Composite Indicators: Methodology and User Guide. Paris: OECD.
+
+Brasil. Ministério da Economia. 2021. Relação Anual de Informações Sociais – RAIS 2021. Brasília: Ministério da Economia. https://www.gov.br/trabalho-e-emprego/pt-br/assuntos/estatisticas-trabalho/rais/rais-2021
+. Accessed November 16, 2025.
+
+IBGE (Instituto Brasileiro de Geografia e Estatística). 2020. Estimativas da população 2020. Rio de Janeiro: IBGE. https://www.ibge.gov.br
+. Accessed November 16, 2025.

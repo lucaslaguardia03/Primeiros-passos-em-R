@@ -1,0 +1,10 @@
+"0","resposta_questao1 <- atividades_ordenadas %>% 
+  filter( `1º` == ""Indústrias Extrativas"" |
+    `2º` == ""Indústrias Extrativas"" |
+    `3º` == ""Indústrias Extrativas"") %>% 
+  pull(Município) %>% 
+  paste(collapse = "", "")
+"
+"2","Error in atividades_ordenadas %>% filter(`1º` == ""Indústrias Extrativas"" |  : 
+  não foi possível encontrar a função ""%>%""
+"

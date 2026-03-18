@@ -1,0 +1,113 @@
+---
+title: "Primeiros Passos em R"
+author: "Lucas Laguardia"
+date: "18/03/2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    highlight: tango
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r pacotes, include = FALSE}
+
+#Instalação dos pacotes
+
+pacotes <- c( "readxl", "dplyr", "tidyr", "kableExtra",
+  "geobr", "ggplot2", "stringr", "ggrepel", "ggspatial", "sf", "scales")
+
+novos_pacotes <- pacotes[!pacotes %in% installed.packages()[, "Package"] ]
+
+if(length(novos_pacotes) > 0) {
+  install.packages(novos_pacotes)
+}
+
+lapply(pacotes, library, character.only = TRUE)
+
+#Contadores
+
+n_tabela <- 1
+
+```
+
+O objetivo desse exercício é apresentar municípios que possuem a indústria extrativa como destaque e traçar o perfil dos vínculos empregatícios da atividade econômica extrativa das Unidades da Federação selecionada, respondendo às seguintes perguntas (Utilize o ano de 2020 ou 2021 como referência):
+
+# Questão 1
+
+**Unidade de Federação:** Minas Gerais  
+**Ano:** 2021
+
+
+```{r bandeira, out.width="60%", echo = FALSE, fig.align='center'}
+knitr::include_graphics("bandeira.png")
+```
+
+
+```{r questao_1.1, echo=FALSE}
+
+#Ler planilha excel
+
+dados_questao1 <- read_excel("Atividades - ES 2021.xlsx", skip = 1)
+
+colnames(dados_questao1)[1] <- "Município"
+
+#Ordenar atividades com mais vínculos
+
+atividades_ordenadas <- dados_questao1 %>% 
+  pivot_longer(cols = 2:21, names_to = "Atividade", values_to = "Vínculos") %>% 
+  group_by(Município) %>% 
+  arrange(desc(Vínculos), .by_group = TRUE) %>% 
+  slice_head(n = 3) %>% 
+  mutate(Posição = paste0(row_number(), "º")) %>% 
+  ungroup() %>% 
+  select(Município, Atividade, Posição) %>% 
+  pivot_wider(values_from = Atividade, names_from = Posição)
+  
+
+
+# Resultado
+
+resposta_questao1 <- atividades_ordenadas %>% 
+  filter( `1º` == "Indústrias Extrativas" |
+    `2º` == "Indústrias Extrativas" |
+    `3º` == "Indústrias Extrativas") %>% 
+  pull(Município) %>% 
+  paste(collapse = ", ")
+```
+
+### 1.1 Quais os municípios que apresentaram a indústria extrativa como a principal, a segunda ou a terceira mais importante atividade econômica?
+
+**Resposta:** `r resposta_questao1`
+
+```{r tabela_questao_1.1, echo=FALSE}
+
+#Ordenar atividades com mais vínculos
+
+kable(atividades_ordenadas, 
+      col.names = c("Município", "1º", "2º", "3º"), caption = paste0(
+  "<center><span style='color:black; font-weight:bold;'>",
+  "Tabela ", n_tabela, " - Atividades econômicas com mais vínculos por município - Espírito Santo (2021)",
+  "</span></center>"),
+       align = "c") %>% 
+  
+ kable_styling(
+    full_width = FALSE,
+    position = "center",
+    font_size = 14,
+    bootstrap_options = c("striped", "hover", "condensed")
+  ) %>%
+  
+  footnote(
+    general = "Fonte: RAIS (2021) - Elaboração própria. Classificação conforme o número de vínculos formais de trabalho.",
+    general_title = "",
+    footnote_as_chunk = TRUE)
+
+# Qual o total de vínculos formais dessa atividade econômica na UF estudada?
+

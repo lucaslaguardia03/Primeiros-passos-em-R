@@ -1,0 +1,1 @@
+{"frames":[],"message":"Error in atividades_ordenadas %>% filter(`1º` == \"Indústrias Extrativas\" |  : \n  não foi possível encontrar a função \"%>%\"\n"}
