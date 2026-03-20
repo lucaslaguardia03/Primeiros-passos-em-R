@@ -3,7 +3,7 @@ title: "Primeiros Passos em R"
 author: "Lucas Laguardia"
 date: "18/03/2026"
 output:
-  html_document:
+  html_document:    
     toc: true
     toc_float: true
     toc_depth: 3
@@ -14,6 +14,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 ```
 
 ```{r pacotes, include = FALSE}
@@ -34,15 +35,15 @@ lapply(pacotes, library, character.only = TRUE)
 #Contadores
 
 n_tabela <- 1
-
+n_grafico <- 1
 ```
 
 O objetivo desse exercício é apresentar municípios que possuem a indústria extrativa como destaque e traçar o perfil dos vínculos empregatícios da atividade econômica extrativa das Unidades da Federação selecionada, respondendo às seguintes perguntas (Utilize o ano de 2020 ou 2021 como referência):
 
 # Questão 1
 
-**Unidade de Federação:** Espírito Santo 
-**Ano:** 2021
+*Unidade de Federação:* Espírito Santo 
+*Ano:* 2021
 
 
 ```{r bandeira, out.width="60%", echo = FALSE, fig.align='center'}
@@ -84,7 +85,7 @@ resposta_questao1 <- atividades_ordenadas %>%
 
 ### 1.1 Quais os municípios que apresentaram a indústria extrativa como a principal, a segunda ou a terceira mais importante atividade econômica?
 
-**Resposta:** `r resposta_questao1`
+*Resposta:* r resposta_questao1
 
 ```{r tabela_questao_1.1, echo=FALSE}
 
@@ -109,5 +110,95 @@ kable(atividades_ordenadas,
     general_title = "",
     footnote_as_chunk = TRUE)
 
+n_tabela <- n_tabela + 1
+
+```
+
+
+```{r vinculos, echo = FALSE}
+
 # Qual o total de vínculos formais dessa atividade econômica na UF estudada?
 
+top20_vinculos <- dados_questao1 %>% 
+  rename(Vínculos = `Indústrias Extrativas`) %>% 
+  filter(Vínculos > 0) %>% 
+  arrange(desc(Vínculos)) %>% 
+  mutate(Posição = paste0(row_number(), "º")) %>% 
+  select(Posição, Município, Vínculos)
+  
+  
+total_vinculos <- sum(dados_questao1$`Indústrias Extrativas`, na.rm = TRUE)
+```
+
+### Qual o total de vínculos formais dessa atividade econômica na UF estudada?
+
+*Resposta:* r total_vinculos
+
+```{r tabela_vinculos, echo=FALSE}
+
+# Plotar tabela
+  
+  kable(top20_vinculos, 
+        col.names = c("Posição","Município", "Vínculos"), caption = paste0 (
+          "<center><span style='color:black; font-weight:bold;'>",
+  "Tabela ", n_tabela, " - Top 20 municípios com mais vínculos formais em Indústria Extrativa - Espírito Santo (2021)",
+  "</span></center>"),
+    align = "c") %>% 
+    
+    kable_styling(
+    full_width = FALSE,
+    position = "center",
+    font_size = 14,
+    bootstrap_options = c("striped", "hover", "condensed")
+  ) %>%
+  
+  footnote(
+    general = "Fonte: RAIS (2021) - Elaboração própria. Classificação conforme o número de vínculos formais de trabalho.",
+    general_title = "",
+    footnote_as_chunk = TRUE)
+        
+n_tabela <- n_tabela + 1
+        
+```
+
+```{r grafico_1, echo = FALSE}
+
+top20_vinculos <- top20_vinculos %>% 
+  select(Município, Vínculos) %>% 
+  slice_head(n=20)
+
+resposta_questao1 <- atividades_ordenadas %>% 
+  filter( `1º` == "Indústrias Extrativas" |
+    `2º` == "Indústrias Extrativas" |
+    `3º` == "Indústrias Extrativas") %>% 
+  pull(Município) 
+  
+
+top20_vinculos <- top20_vinculos %>% 
+  mutate(Destaque = ifelse(Município %in% resposta_questao1, "Sim", "Não"))
+  
+ggplot(top20_vinculos, aes(y = Vínculos, x = reorder(Município, Vínculos), fill = Destaque)) +
+  geom_col(stat = "identity",color="black") + 
+  coord_flip() +
+    
+  scale_fill_manual(values = c("Sim" = "yellow", 
+                               "Não" = "lightblue")) +
+  
+  labs(title= paste0("Gráfico ",n_grafico, " - Top 20 municípios com mais vínculos formais\n","em Indústria Extrativa - Espírito Santo (2021)"),
+       x="Município",
+       y="Vínculos") +
+  theme(
+    legend.position = "none", 
+    plot.title = element_text(
+    size = 12,
+    face = "bold",   
+    hjust = 0.5)   
+    panel.background = element_rect(fill = "gray95")
+        ) + 
+  geom_text(aes(label = Vínculos), 
+            hjust = -0.1, size = 3) 
+  
+  
+```
+    
+#highlight municípios primeira atividade
