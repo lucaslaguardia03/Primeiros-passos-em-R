@@ -85,7 +85,7 @@ resposta_questao1 <- atividades_ordenadas %>%
 
 ### 1.1 Quais os municípios que apresentaram a indústria extrativa como a principal, a segunda ou a terceira mais importante atividade econômica?
 
-*Resposta:* r resposta_questao1
+**Resposta:** `r resposta_questao1`
 
 ```{r tabela_questao_1.1, echo=FALSE}
 
@@ -130,9 +130,9 @@ top20_vinculos <- dados_questao1 %>%
 total_vinculos <- sum(dados_questao1$`Indústrias Extrativas`, na.rm = TRUE)
 ```
 
-### Qual o total de vínculos formais dessa atividade econômica na UF estudada?
+### 1.2 Qual o total de vínculos formais dessa atividade econômica na UF estudada?
 
-*Resposta:* r total_vinculos
+**Resposta:** `r format(total_vinculos, scientific = FALSE)` vínculos
 
 ```{r tabela_vinculos, echo=FALSE}
 
@@ -193,12 +193,9 @@ ggplot(top20_vinculos, aes(y = Vínculos, x = reorder(Município, Vínculos), fi
     size = 12,
     face = "bold",   
     hjust = 0.5)   
-    panel.background = element_rect(fill = "gray95")
         ) + 
   geom_text(aes(label = Vínculos), 
             hjust = -0.1, size = 3) 
   
   
 ```
-    
-#highlight municípios primeira atividade
