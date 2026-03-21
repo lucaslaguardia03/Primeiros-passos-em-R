@@ -222,7 +222,7 @@ Segundo os dados da RAIS (2021), a distribuição dos vínculos trabalhistas na 
 
 Esse cenário indica que a participação feminina permanece bastante limitada, refletindo tanto características históricas do setor — tradicionalmente associado a atividades de maior esforço físico e à presença masculina — quanto barreiras contemporâneas, como menor acesso das mulheres a determinadas formações técnicas, discriminação estrutural e ambientes de trabalho pouco adaptados para diversidade de gênero.
 
-``` {r sexo, echo = FALSE}
+```{r grafico_2, echo=FALSE, warning=FALSE}
 
 dados_sexo <- read_xlsx('sexo.xlsx', skip = 1)
 
